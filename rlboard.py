@@ -22,6 +22,17 @@ def imload(fname,size):
     img = img / np.max(img)
     return img
 
+def draw_dirs(weights,size=50):
+    p=np.ones((size-2,size-2,3))
+    m = (size-2)//2
+    black = (0,0,0)
+    for dir,(dx,dy) in enumerate([(-1,0),(1,0),(0,-1),(0,1)]):
+        len = size/2 * weights[dir]
+        x = int(m+len * dx)
+        y = int(m+len * dy)
+        cv2.line(p, (m,m),(x,y), black, 1)
+    return p
+
 def draw_line(dx,dy,size=50):
     p=np.ones((size-2,size-2,3))
     if dx==0:
@@ -146,14 +157,8 @@ class Board:
                     img[self.size*y+2:self.size*y+ov.shape[0]+2,self.size*x+2:self.size*x+2+ov.shape[1],:] = np.minimum(ov,1.0)
                 if self.matrix[x,y] == Board.Cell.tree: # tree
                     img[self.size*y:self.size*(y+1),self.size*x:self.size*(x+1),:] = (0,1.0,0)
-                if self.matrix[x,y] == Board.Cell.empty and Q is not None:
-                    p = probs(Q[x,y])
-                    dx,dy = 0,0
-                    for i,(ddx,ddy) in enumerate([(-1,0),(1,0),(0,-1),(0,1)]):
-                        dx += ddx*p[i]
-                        dy += ddy*p[i]
-                        l = draw_line(dx,dy,self.size)
-                        img[self.size*y+2:self.size*y+l.shape[0]+2,self.size*x+2:self.size*x+2+l.shape[1],:] = l
+                if self.matrix[x,y] == Board.Cell.empty:
+                    self.drawArrows(x,y,img,Q)
 
         # Draw grid
         for i in range(self.height+1):
@@ -163,6 +168,12 @@ class Board:
             img[j*self.size,:] = 0.3
             #cv2.line(img,(j*self.size,0),(j*self.size,self.height*self.size), self.grid_color, self.grid_thickness,lineType=self.grid_line_type)
         return img
+    
+    def drawArrows(self,x,y,img,Q):
+        if Q is not None:
+            p = probs(Q[x,y])
+            l = draw_dirs(p, self.size)
+            img[self.size*y+2:self.size*y+l.shape[0]+2,self.size*x+2:self.size*x+2+l.shape[1],:] = l
 
     def plot(self,Q=None):
         plt.figure(figsize=(11,6))
