@@ -155,8 +155,10 @@ class Board:
                 if self.matrix[x,y] == Board.Cell.apple: # apple
                     ov = self.pics['apple']
                     img[self.size*y+2:self.size*y+ov.shape[0]+2,self.size*x+2:self.size*x+2+ov.shape[1],:] = np.minimum(ov,1.0)
+                    self.drawArrows(x,y,img,Q)
                 if self.matrix[x,y] == Board.Cell.tree: # tree
                     img[self.size*y:self.size*(y+1),self.size*x:self.size*(x+1),:] = (0,1.0,0)
+                    self.drawArrows(x,y,img,Q)
                 if self.matrix[x,y] == Board.Cell.empty:
                     self.drawArrows(x,y,img,Q)
 
@@ -173,7 +175,8 @@ class Board:
         if Q is not None:
             p = probs(Q[x,y])
             l = draw_dirs(p, self.size)
-            img[self.size*y+2:self.size*y+l.shape[0]+2,self.size*x+2:self.size*x+2+l.shape[1],:] = l
+            img[self.size*y+2:self.size*y+l.shape[0]+2,self.size*x+2:self.size*x+2+l.shape[1],:] *= l
+
 
     def plot(self,Q=None):
         plt.figure(figsize=(11,6))
