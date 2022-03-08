@@ -74,6 +74,8 @@ class Board:
         }
         self.human = (0,0)
         self.frame_no = 0
+        self.energy = 5
+        self.fatigue = 0
 
     def randomize(self,water_size=5, num_water=3, num_wolves=1, num_trees=5, num_apples=3,seed=None):
         if seed:
@@ -123,6 +125,13 @@ class Board:
         new_pos = self.move_pos(self.human,dpos)
         if self.is_valid(new_pos) or not check_correctness:
             self.human = new_pos
+            self.fatigue = min(self.fatigue + 1, 9)
+            self.energy = max(self.energy - 1, 0)
+            if self.is_valid(new_pos):
+                if self.at() == Board.Cell.apple:
+                    self.energy = 9
+                if self.at() == Board.Cell.tree:
+                    self.fatigue = 0
 
     def random_pos(self):
         x = random.randint(0,self.width-1)
@@ -137,7 +146,7 @@ class Board:
                 break
 
 
-    def image(self,Q=None):
+    def image(self,Q=None, energy=None, fatigue=None):
         img = np.zeros((self.height*self.size+1,self.width*self.size+1,3))
         img[:,:,:] = self.background_color
         # Draw water
@@ -155,12 +164,12 @@ class Board:
                 if self.matrix[x,y] == Board.Cell.apple: # apple
                     ov = self.pics['apple']
                     img[self.size*y+2:self.size*y+ov.shape[0]+2,self.size*x+2:self.size*x+2+ov.shape[1],:] = np.minimum(ov,1.0)
-                    self.drawArrows(x,y,img,Q)
+                    self.drawArrows(x,y,img,Q, energy,fatigue)
                 if self.matrix[x,y] == Board.Cell.tree: # tree
                     img[self.size*y:self.size*(y+1),self.size*x:self.size*(x+1),:] = (0,1.0,0)
-                    self.drawArrows(x,y,img,Q)
+                    self.drawArrows(x,y,img,Q, energy,fatigue)
                 if self.matrix[x,y] == Board.Cell.empty:
-                    self.drawArrows(x,y,img,Q)
+                    self.drawArrows(x,y,img,Q, energy,fatigue)
 
         # Draw grid
         for i in range(self.height+1):
@@ -171,16 +180,18 @@ class Board:
             #cv2.line(img,(j*self.size,0),(j*self.size,self.height*self.size), self.grid_color, self.grid_thickness,lineType=self.grid_line_type)
         return img
     
-    def drawArrows(self,x,y,img,Q):
+    def drawArrows(self,x,y,img,Q, energy,fatigue):
         if Q is not None:
-            p = probs(Q[x,y])
+            energy = energy or self.energy
+            fatigue = fatigue or self.fatigue
+            p = probs(Q[x,y,energy, fatigue])
             l = draw_dirs(p, self.size)
             img[self.size*y+2:self.size*y+l.shape[0]+2,self.size*x+2:self.size*x+2+l.shape[1],:] *= l
 
 
-    def plot(self,Q=None):
+    def plot(self,Q=None, energy=None, fatigue=None):
         plt.figure(figsize=(11,6))
-        plt.imshow(self.image(Q),interpolation='hanning')
+        plt.imshow(self.image(Q, energy, fatigue),interpolation='hanning')
 
     def saveimage(self,filename,Q=None):
         cv2.imwrite(filename,255*self.image(Q)[...,::-1])
