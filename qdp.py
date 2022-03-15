@@ -27,22 +27,29 @@ A = 4 # 4 possible actions
 
 # Connect to game and return observation
 class Game:
+    """Connects the Peter-and-the-Wolf game to our DeepQL code."""
     def __init__(self):
         self.m = Board(8,8)
         self.m.randomize()
         self.actions = {'L':(-1,0), 'R':(1,0), 'D':(0,-1), 'U':(0,1)}
 
     def observe(self):
+        """Observes the current state of the game and returns it as a
+           one-dimensional array suitable as input layer."""
         return self.m.matrix.flatten()
     
     def act(self, action):
+        """Takes an action and updates the game's state."""
         self.m.move(action[1], check_correctness=False)
 
     def reward(self):
+        """Returns the current instantaneous reward after the most recent action."""
         if not self.m.is_valid(self.m.human):
             return -10
         if self.m.at() in [self.m.Cell.water]:
             return -10
+        if self.m.at() in [self.m.Cell.apple]:
+            return 10
         if self.m.at() in [self.m.Cell.wolf]:
             # TODO reintroduce energy & fatigue to observation and reward
             # if self.m.energy > self.m.fatigue:
@@ -51,23 +58,29 @@ class Game:
         return -0.1
 
 class DqlEvaluator:
+    """A forward evaluator of a NN with optional backprop optimizer."""
     def __init__(self, optimizer = None):
         self.optimizer = optimizer
 
-    """Forward-evaluates a neural network."""
     def EvalLoop(self, nn, maxruns, game, reportingBatchSize = 100):
+        """Forward-evaluates a neural network."""
         total_reward = 0
         path_length = 0
         gamma = 0.9
 
+        game.m.random_start()
+
         for count in range(maxruns):
             state = game.observe()
             output = self.Evaluate(nn, state)
-            action = probstrategy(game, output)
+            # action is a one-hot vector
+            action_one_hot = probstrategy(game, output)
+            action = list(game.actions.items())[action_one_hot.argmax()]
             game.act(action)
             state_after = game.observe()
 
             r = game.reward()
+
 
             total_reward += r
             path_length += 1
@@ -79,23 +92,23 @@ class DqlEvaluator:
             else:
                 # non-terminal state
                 update = r + gamma * self.Evaluate(nn, state_after).max()
-            loss = output * r
+            loss = output * update
             # Fake a 'target': in supervised learning, we'd have a target
             # here, we fake a target taking the sampled action / output and
             # multiplying it by the advantage given by reward (should it be by total reward?)
-            target = loss + output
-
-            if self.optimizer:
-                self.optimizer.Optimize(nn, output, target)
+            target = action_one_hot * r
             
-            if r < -5 or total_reward < -100 or r > 5:
-                break
+            if self.optimizer:
+                error = self.optimizer.Optimize(nn, output, target)
+                logger.debug(f"output / reward / update / loss / error:{output} / {r} / {update} / {loss} / {error}")
 
-        if total_reward > 0:
-            logger.info(f"Eval loop: path_length: {path_length}, total_reward: {total_reward}")
-        else:
-            logger.debug(f"Eval loop: path_length: {path_length}, total_reward: {total_reward}")
-    
+            if r > 5:
+                return path_length, total_reward, True
+            if r < -5 or total_reward < -100:
+                return path_length, total_reward, False
+        
+        return path_length, total_reward, False    
+        
     def Evaluate(self, nn, input):
         state = input
         for layer in nn.layers:
@@ -112,9 +125,13 @@ def normalize(v,eps=1e-4):
     return v
 
 def probstrategy(game, weights):
+    """Input: game, weights = [0.3,0.7,0.1,0.2]"""
     weights = normalize(weights)
-    action = random.choices(list(game.actions.items()), weights=weights)
-    return action[0]
+    result = np.zeros(len(game.actions))
+    indices = [0,1,2,3]
+    action_index = random.choices(indices, weights=weights)
+    result[action_index] = 1
+    return result
 
 
 def main(argv):
@@ -124,17 +141,24 @@ def main(argv):
         Q = nn.NN.LoadFromFile(FLAGS.loadfile)
     else:
         Q = nn.NN.WithRandomWeights([D, H, A])
-
-    for episode in range(1000):
-        game = Game()
+    
+    game = Game()
+    wins = 0
+    for episode in range(1, FLAGS.maxruns):
         
         if FLAGS.train:
             evaluator = DqlEvaluator(nn.GradientDescentOptimizer(FLAGS.learningrate))
         else:
             evaluator = DqlEvaluator()
     
-        evaluator.EvalLoop(Q, FLAGS.maxruns, game, FLAGS.reportingBatchSize)
+        path_length, total_reward, won = evaluator.EvalLoop(Q, FLAGS.maxruns, game, FLAGS.reportingBatchSize)
+        if won:
+            wins += 1
+        if episode % FLAGS.reportingBatchSize == 0:
+            logger.info(f"Episode {episode}: Won {wins}/{FLAGS.reportingBatchSize}")
+            wins = 0
 
+    logger.info(f"Episode {episode}: Won {wins}/{FLAGS.reportingBatchSize}")
     if FLAGS.savefile:
         Q.Store(FLAGS.savefile)
 
