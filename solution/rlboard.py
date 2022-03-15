@@ -149,7 +149,7 @@ class Board:
                 if self.matrix[x,y] == Board.Cell.empty and Q is not None:
                     p = probs(Q[x,y])
                     dx,dy = 0,0
-                    for i,(ddx,ddy) in enumerate([(-1,0),(1,0),(0,-1),(0,1)]):
+                    for i,(ddx,ddy) in enumerate([(0,-1),(0,1),(-1,0),(1,0)]):
                         dx += ddx*p[i]
                         dy += ddy*p[i]
                         l = draw_line(dx,dy,self.size)
