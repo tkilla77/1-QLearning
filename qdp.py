@@ -28,9 +28,9 @@ A = 4 # 4 possible actions
 # Connect to game and return observation
 class Game:
     """Connects the Peter-and-the-Wolf game to our DeepQL code."""
-    def __init__(self):
+    def __init__(self, seed=0):
         self.m = Board(8,8)
-        self.m.randomize()
+        self.m.randomize(seed=seed)
         self.actions = {'L':(-1,0), 'R':(1,0), 'D':(0,-1), 'U':(0,1)}
 
     def observe(self):
@@ -67,6 +67,7 @@ class DqlEvaluator:
         total_reward = 0
         path_length = 0
         gamma = 0.9
+        total_error = 0
 
         game.m.random_start()
 
@@ -100,14 +101,15 @@ class DqlEvaluator:
             
             if self.optimizer:
                 error = self.optimizer.Optimize(nn, output, target)
-                logger.debug(f"output / reward / update / loss / error:{output} / {r} / {update} / {loss} / {error}")
+                logger.debug(f"reward / error: {r} / {error}")
+                total_error += error
 
             if r > 5:
-                return path_length, total_reward, True
+                return path_length, total_reward, total_error, True
             if r < -5 or total_reward < -100:
-                return path_length, total_reward, False
+                return path_length, total_reward, total_error, False
         
-        return path_length, total_reward, False    
+        return path_length, total_reward, total_error, False    
         
     def Evaluate(self, nn, input):
         state = input
@@ -127,12 +129,11 @@ def normalize(v,eps=1e-4):
 def probstrategy(game, weights):
     """Input: game, weights = [0.3,0.7,0.1,0.2]"""
     weights = normalize(weights)
-    result = np.zeros(len(game.actions))
     indices = [0,1,2,3]
-    action_index = random.choices(indices, weights=weights)
+    action_index = random.choices(indices, weights=weights)[0]
+    result = np.zeros(len(game.actions))
     result[action_index] = 1
     return result
-
 
 def main(argv):
     logger.setLevel(FLAGS.loglevel)
@@ -142,8 +143,9 @@ def main(argv):
     else:
         Q = nn.NN.WithRandomWeights([D, H, A])
     
-    game = Game()
+    game = Game(seed=42)
     wins = 0
+    error = 0
     for episode in range(1, FLAGS.maxruns):
         
         if FLAGS.train:
@@ -151,12 +153,14 @@ def main(argv):
         else:
             evaluator = DqlEvaluator()
     
-        path_length, total_reward, won = evaluator.EvalLoop(Q, FLAGS.maxruns, game, FLAGS.reportingBatchSize)
+        path_length, total_reward, total_error, won = evaluator.EvalLoop(Q, FLAGS.maxruns, game, FLAGS.reportingBatchSize)
+        error += total_error
         if won:
             wins += 1
         if episode % FLAGS.reportingBatchSize == 0:
-            logger.info(f"Episode {episode}: Won {wins}/{FLAGS.reportingBatchSize}")
+            logger.info(f"Episode {episode}: Won {wins}/{FLAGS.reportingBatchSize}, sum(error): {error}")
             wins = 0
+            error = 0
 
     logger.info(f"Episode {episode}: Won {wins}/{FLAGS.reportingBatchSize}")
     if FLAGS.savefile:
